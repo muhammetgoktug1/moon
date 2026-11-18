@@ -9,6 +9,7 @@ import TrendChip from "@/components/TrendChip";
 // Utils
 import { summarize, trend, tone, certDays, certTone } from "@/lib/stats";
 import { codeLabel, stateOf } from "@/utils/shortcuts";
+import { nameOf } from "@/utils/name";
 
 // Styles
 import Styles from "../styles.module.scss";
@@ -53,10 +54,10 @@ const MonitorCard = ({ m, drag }) => {
       <div className={Styles.cardHead}>
         <Avatar url={m.url} name={m.name} size={36} />
         <div className={Styles.cardTitle}>
-          <strong>{m.name}</strong>
+          <strong>{nameOf(m)}</strong>
           <span>
             {m.method === "POST" && <b className={Styles.verb}>POST</b>}
-            {m.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+            {(m.url || "").replace(/^https?:\/\//, "").replace(/\/$/, "")}
           </span>
           {m.cert && <CertChip cert={m.cert} />}
         </div>

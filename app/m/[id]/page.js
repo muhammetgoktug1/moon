@@ -28,6 +28,7 @@ import useLiveStore from "@/store/useLiveStore";
 // Utils
 import { RANGES, summarize, trend, tone, codes, incidents, downsample, avgPhases } from "@/lib/stats";
 import { fmtTime, fmtDay, fmtDuration, codeLabel, stateOf } from "@/utils/shortcuts";
+import { nameOf } from "@/utils/name";
 
 // Styles
 import Styles from "./styles.module.scss";
@@ -87,7 +88,7 @@ const Detail = () => {
       <section className={Styles.title} data-tone={state}>
         <Avatar url={m.url} name={m.name} size={56} />
         <div className={Styles.titleText}>
-          <h1>{m.name}</h1>
+          <h1>{nameOf(m)}</h1>
           <a href={m.url} target="_blank" rel="noreferrer">
             {m.url} ↗
           </a>

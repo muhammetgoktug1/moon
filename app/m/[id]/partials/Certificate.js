@@ -7,7 +7,7 @@ import Styles from "../styles.module.scss";
 const fmtDate = (t) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
 const Certificate = ({ m }) => {
-  if (!m.cert && m.url.startsWith("http:")) return <p className={Styles.none}>Plain HTTP, so there is no certificate to check.</p>;
+  if (!m.cert && m.url?.startsWith("http:")) return <p className={Styles.none}>Plain HTTP, so there is no certificate to check.</p>;
   if (!m.cert) return <p className={Styles.none}>Waiting for the first successful check.</p>;
   const now = Date.now();
   const days = certDays(m.cert, now);

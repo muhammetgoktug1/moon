@@ -10,6 +10,7 @@ import useLiveStore from "@/store/useLiveStore";
 
 // Utils
 import { getSocket } from "@/utils/socket";
+import { nameOf } from "@/utils/name";
 
 // Styles
 import Styles from "@/styles/dialog.module.scss";
@@ -90,7 +91,7 @@ const GroupDialog = ({ group, label, primary }) => {
                 <label key={m.id}>
                   <input type="checkbox" checked={picked.includes(m.id)} onChange={() => toggle(m.id)} />
                   <Avatar url={m.url} name={m.name} size={24} />
-                  <strong>{m.name}</strong>
+                  <strong>{nameOf(m)}</strong>
                   {m.group && m.group !== group.id && <em>in {tabName(m.group)}</em>}
                 </label>
               ))}

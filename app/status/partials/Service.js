@@ -4,6 +4,7 @@ import Avatar from "@/components/Avatar";
 // Utils
 import { dayTone } from "@/lib/stats";
 import { uptimeOf } from "@/utils/shortcuts";
+import { nameOf } from "@/utils/name";
 
 // Styles
 import Styles from "../styles.module.scss";
@@ -27,11 +28,11 @@ const Service = ({ m }) => {
     <li className={Styles.service} data-tone={state}>
       <div className={Styles.serviceHead}>
         <Avatar name={m.name} size={28} />
-        <strong>{m.name}</strong>
+        <strong>{nameOf(m)}</strong>
         <span className={`num ${Styles.uptime}`}>{m.days.some((d) => d.count) ? `${uptime.toFixed(2)}% uptime` : "No data yet"}</span>
         <span className="pill">{STATE_LABEL[state]}</span>
       </div>
-      <div className={`${StripStyles.strip} ${StripStyles.stripTall}`} role="img" aria-label={`${m.name}: daily uptime, last ${m.days.length} days`}>
+      <div className={`${StripStyles.strip} ${StripStyles.stripTall}`} role="img" aria-label={`${nameOf(m)}: daily uptime, last ${m.days.length} days`}>
         {m.days.map((d) => (
           <i key={d.day} data-tone={dayTone(d)} title={dayTitle(d)} />
         ))}

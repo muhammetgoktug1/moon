@@ -25,6 +25,7 @@ import usePrefsStore from "@/store/usePrefsStore";
 // Utils
 import { summarize } from "@/lib/stats";
 import { headline, stateOf, move } from "@/utils/shortcuts";
+import { nameOf } from "@/utils/name";
 import { getSocket } from "@/utils/socket";
 
 // Styles
@@ -33,7 +34,7 @@ import Styles from "./styles.module.scss";
 const RANK = { down: 0, slow: 1, idle: 2, up: 3 };
 const SORTS = {
   custom: { label: "Custom order" },
-  name: { label: "Name", by: (a, b) => a.name.localeCompare(b.name) },
+  name: { label: "Name", by: (a, b) => nameOf(a).localeCompare(nameOf(b)) },
   status: { label: "Down first", by: (a, b) => RANK[stateOf(a.checks)] - RANK[stateOf(b.checks)] },
   uptime: { label: "Lowest uptime", by: (a, b) => summarize(a.checks).uptime - summarize(b.checks).uptime },
   slow: { label: "Slowest response", by: (a, b) => summarize(b.checks).avg - summarize(a.checks).avg },
