@@ -3,11 +3,13 @@ import next from "next";
 import mongoose from "mongoose";
 import { Server } from "socket.io";
 import { MONGODB_URI, PORT, warnLegacyEnv } from "./lib/config.js";
-import { Monitor, Check, Group } from "./lib/models.js";
+import { Monitor, Check, Group, HostReport } from "./lib/models.js";
 import { startChecker, checkOne, toWire, certWire } from "./lib/checker.js";
 import { externalEndpoint } from "./lib/external.js";
+import { hostReportEndpoint, hostsWire } from "./lib/hostReport.js";
+import { statusData, resetStatusCache } from "./lib/statusPage.js";
 import { routeGate } from "./lib/routes.js";
-import { RECENT, RANGES, INTERVAL_MS } from "./lib/stats.js";
+import { RECENT, RANGES } from "./lib/stats.js";
 import {
   authBootstrap,
   setupOpen,
@@ -108,57 +110,11 @@ function withStored({ headers, body }, monitor) {
   };
 }
 
-const DAY_MS = 86_400_000;
-const STATUS_DAYS = 30; // checks expire after 30 days
-let statusCache;
-
-// Herkese açık durum sayfası verisi. Gizlilik: URL/origin, hata metni, IP ve
-// faz süreleri panele özeldir — buraya yalnız ad + günlük özet + son durum
-// (at/ms/status/ok) çıkar; URL hiçbir şekilde sızmaz.
-async function statusData() {
-  if (statusCache && Date.now() - statusCache.at < INTERVAL_MS) return statusCache.data;
-  const since = new Date().setUTCHours(0, 0, 0, 0) - (STATUS_DAYS - 1) * DAY_MS;
-  const [groups, monitors, days] = await Promise.all([
-    groupList(),
-    Monitor.find().sort(ORDER).lean(),
-    Check.aggregate([
-      { $match: { at: { $gte: new Date(since) } } },
-      {
-        $group: {
-          // UTC midnight in ms; $dateTrunc would need MongoDB 5
-          _id: { monitor: "$monitor", day: { $subtract: [{ $toLong: "$at" }, { $mod: [{ $toLong: "$at" }, DAY_MS] }] } },
-          count: { $sum: 1 },
-          ok: { $sum: { $cond: ["$ok", 1, 0] } },
-        },
-      },
-    ]),
-  ]);
-  const byKey = new Map(days.map((d) => [`${d._id.monitor}:${d._id.day}`, d]));
-  const services = await Promise.all(
-    monitors.map(async (m) => {
-      const last = await Check.findOne({ monitor: m._id }).sort({ at: -1 }).lean();
-      const wire = last && toWire(last);
-      return {
-        id: String(m._id),
-        name: m.name,
-        group: m.group ? String(m.group) : "",
-        last: wire ? { at: wire.at, ms: wire.ms, status: wire.status, ok: wire.ok } : null,
-        days: Array.from({ length: STATUS_DAYS }, (_, i) => {
-          const day = since + i * DAY_MS;
-          const d = byKey.get(`${m._id}:${day}`);
-          return { day, count: d?.count || 0, ok: d?.ok || 0 };
-        }),
-      };
-    }),
-  );
-  const data = { groups, services };
-  statusCache = { at: Date.now(), data };
-  return data;
-}
+// /status sayfasının verisi lib/statusPage.js'te (test edilen gizlilik garantisiyle).
 
 function wire(io) {
   const broadcast = async () => {
-    statusCache = undefined;
+    resetStatusCache();
     io.to("auth").emit("monitors", await snapshot());
     io.to("auth").emit("groups", await groupList());
   };
@@ -183,6 +139,11 @@ function wire(io) {
       ack(await snapshot());
     });
     socket.on("status", async (ack) => ack(await statusData()));
+    // Faz A: host kaynak raporları — yalnız oturumlu panel (/status'a ÇIKMAZ).
+    socket.on("hosts", async (ack) => {
+      if (!authed()) return ack?.(AUTH_ERROR);
+      ack(await hostsWire());
+    });
     socket.on("groups", async (ack) => {
       if (!authed()) return ack?.(AUTH_ERROR);
       ack(await groupList());
@@ -350,6 +311,8 @@ function redirect(res, location) {
 async function gate(req, res, handle) {
   // dış özet ucu (servis token'lı; 2b köprüsü için) — kimlik uçlarından önce
   if (await externalEndpoint(req, res)) return;
+  // iç host rapor ucu (host-agent.py; aynı servis token'ı) — kimlik uçlarından önce
+  if (await hostReportEndpoint(req, res, { onStored: () => hostsBroadcast() })) return;
   if (await authEndpoints(req, res)) return;
 
   const path = req.url.split("?")[0];
@@ -372,6 +335,8 @@ await authBootstrap();
 warnLegacyEnv();
 // check TTL 30g → 90g (panel kuralı): mevcut indeks seçenekleri farklıysa yeniden kurar.
 await Check.syncIndexes().catch((err) => console.error("check index sync", err));
+// Faz A: hostReports TTL (30g) + host adına unique indeks açılışta kesin kurulsun.
+await HostReport.syncIndexes().catch((err) => console.error("hostReport index sync", err));
 await app.prepare();
 
 const server = createServer((req, res) => {
@@ -382,6 +347,8 @@ const server = createServer((req, res) => {
   });
 });
 const io = new Server(server);
+// Faz A: yeni host raporu yazılınca panele canlı itilir (yalnız 'auth' odası).
+const hostsBroadcast = async () => io.to("auth").emit("hosts", await hostsWire());
 wire(io);
 
 // Kontrolcü (dakikalık denetim turu) varsayılan DURUR: mevcut uptime uygulamamız

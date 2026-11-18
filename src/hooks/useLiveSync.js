@@ -14,11 +14,12 @@ const bind = () => {
   bound = true;
 
   const socket = getSocket();
-  const { setMonitors, setGroups, setConnected, addCheck } = useLiveStore.getState();
+  const { setMonitors, setGroups, setConnected, addCheck, setHosts } = useLiveStore.getState();
   const load = () => {
     setConnected(true);
     socket.emit("list", setMonitors);
     socket.emit("groups", setGroups);
+    socket.emit("hosts", setHosts); // Faz A: oturum yoksa sunucu hata döner → bölüm gizli
   };
 
   if (socket.connected) load();
@@ -27,6 +28,7 @@ const bind = () => {
   socket.on("monitors", setMonitors);
   socket.on("groups", setGroups);
   socket.on("check", addCheck);
+  socket.on("hosts", setHosts); // yeni host raporu yazılınca canlı itilir
 };
 
 const useLiveSync = () => {

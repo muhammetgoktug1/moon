@@ -8,6 +8,7 @@ import Hero from "@/components/Hero";
 import Moon, { phaseOf } from "@/components/Moon";
 import MonitorDialog from "@/components/MonitorDialog";
 import GroupDialog from "@/components/GroupDialog";
+import Hosts from "@/components/Hosts";
 
 // Partials
 import MonitorCard from "./partials/MonitorCard";
@@ -119,6 +120,9 @@ const Dashboard = () => {
           </dd>
         </div>
       </Hero>
+
+      {/* Faz A: host kaynak raporları — rapor yoksa bölüm kendini gizler (Hosts) */}
+      <Hosts />
 
       {loaded && !monitors.length && (
         <div className={`panel ${Styles.empty}`}>

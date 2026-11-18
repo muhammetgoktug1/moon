@@ -1,0 +1,120 @@
+// ---- hosts (Faz A): resource report cards
+
+.section {
+  margin: 22px 0;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+
+  h2 { margin: 0; font-family: var(--serif); font-weight: 400; font-size: 28px; }
+}
+
+.hint { color: var(--muted); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 18px;
+
+  @media (max-width: 420px) { grid-template-columns: 1fr; }
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  strong { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  // bayat rapor: kart başlığı amber
+  &[data-stale="true"] strong { color: var(--warn); }
+}
+
+.stale {
+  margin-left: auto;
+  padding: 2px 10px;
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  border-radius: 999px;
+  color: var(--warn);
+  font: 11px var(--mono);
+  white-space: nowrap;
+}
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: 92px 1fr 44px;
+  align-items: center;
+  gap: 10px;
+
+  .label { font-size: 11px; }
+}
+
+.sub { color: var(--muted); font-size: 10px; }
+
+.bar {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+
+  i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--tone) 75%, transparent);
+    transition: width 0.4s ease;
+  }
+}
+
+.pct {
+  font: 12px var(--mono);
+  text-align: right;
+  color: var(--text-2);
+
+  &[data-tone="warn"], &[data-tone="down"] { color: var(--tone); }
+}
+
+.meta {
+  display: flex;
+  gap: 18px;
+
+  b { margin-left: 6px; font: 12px var(--mono); font-weight: 400; color: var(--text-2); }
+}
+
+.services {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  list-style: none;
+
+  li {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font: 12px var(--mono);
+    color: var(--text-2);
+
+    .lamp { width: 7px; height: 7px; }
+  }
+}
