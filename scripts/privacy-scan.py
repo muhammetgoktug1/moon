@@ -78,7 +78,8 @@ def domain_ok(domain):
 
 
 def clean_for_ports(text):
-    """Port taraması öncesi saat (14:23) ve dilim ([:120]) sözdzaimini kaldır."""
+    """Port taraması öncesi ISO 8601 damgası, saat (14:23) ve dilim ([:120]) sözdzaimini kaldır."""
+    text = re.sub(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?", " ", text)  # ISO 8601 (+00:00 eki dahil)
     text = re.sub(r"(?<!\d)\d{1,2}:\d{2}(?!\d)", " ", text)  # saat/süre
     text = re.sub(r"\[\s*:\s*\d+\s*\]", " ", text)  # python/js dilimi [:n]
     return text
