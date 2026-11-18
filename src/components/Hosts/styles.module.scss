@@ -118,3 +118,13 @@
     .lamp { width: 7px; height: 7px; }
   }
 }
+
+// Faz 2b: son geçiş olayı — küçük, soluk, kesik çizgiyle ayrılır (estetiği bozmaz)
+.lastAlert {
+  margin: 0;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+  font: 11px var(--mono);
+  overflow-wrap: anywhere;
+}

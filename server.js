@@ -7,6 +7,7 @@ import { Monitor, Check, Group, HostReport } from "./lib/models.js";
 import { startChecker, checkOne, toWire, certWire } from "./lib/checker.js";
 import { externalEndpoint } from "./lib/external.js";
 import { hostReportEndpoint, hostsWire } from "./lib/hostReport.js";
+import { dispatchReportAlerts, startHostReportWatch } from "./lib/hostAlerts.js";
 import { statusData, resetStatusCache } from "./lib/statusPage.js";
 import { routeGate } from "./lib/routes.js";
 import { RECENT, RANGES } from "./lib/stats.js";
@@ -312,7 +313,8 @@ async function gate(req, res, handle) {
   // dış özet ucu (servis token'lı; 2b köprüsü için) — kimlik uçlarından önce
   if (await externalEndpoint(req, res)) return;
   // iç host rapor ucu (host-agent.py; aynı servis token'ı) — kimlik uçlarından önce
-  if (await hostReportEndpoint(req, res, { onStored: () => hostsBroadcast() })) return;
+  // Faz 2b: kabul edilen raporun servis geçişleri anında WhatsApp'a gider.
+  if (await hostReportEndpoint(req, res, { onStored: () => hostsBroadcast(), onReport: dispatchReportAlerts })) return;
   if (await authEndpoints(req, res)) return;
 
   const path = req.url.split("?")[0];
@@ -360,3 +362,7 @@ if (process.env.MOON_CHECKER === "1") {
 }
 
 server.listen(PORT, "0.0.0.0", () => console.log(`moon ready on :${PORT}`));
+
+// Faz 2b: raporu kesilen hostları dakikada bir tara — 3 eksik raporda (15 dk)
+// TEK "rapor yok" uyarısı; rapor dönünce toparlanma (lib/hostAlerts.js).
+startHostReportWatch();

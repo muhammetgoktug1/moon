@@ -69,6 +69,8 @@ const Hosts = () => {
                 ))}
               </ul>
             )}
+
+            {c.lastAlert && <p className={Styles.lastAlert}>{c.lastAlert.text}</p>}
           </article>
         ))}
       </div>
