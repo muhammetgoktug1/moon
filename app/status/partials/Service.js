@@ -26,7 +26,7 @@ const Service = ({ m }) => {
   return (
     <li className={Styles.service} data-tone={state}>
       <div className={Styles.serviceHead}>
-        <Avatar url={m.site} name={m.name} size={28} />
+        <Avatar name={m.name} size={28} />
         <strong>{m.name}</strong>
         <span className={`num ${Styles.uptime}`}>{m.days.some((d) => d.count) ? `${uptime.toFixed(2)}% uptime` : "No data yet"}</span>
         <span className="pill">{STATE_LABEL[state]}</span>

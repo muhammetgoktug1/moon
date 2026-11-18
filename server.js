@@ -6,6 +6,18 @@ import { MONGODB_URI, PORT } from "./lib/config.js";
 import { Monitor, Check, Group } from "./lib/models.js";
 import { startChecker, checkOne, toWire, certWire } from "./lib/checker.js";
 import { RECENT, RANGES, INTERVAL_MS } from "./lib/stats.js";
+import {
+  authBootstrap,
+  setupAcikMi,
+  ilkHesabiAc,
+  girisYap,
+  oturumDenetle,
+  cikisYap,
+  cerezDegeri,
+  cerezBasligi,
+  hizSiniri,
+  kokenKabul,
+} from "./lib/auth.js";
 
 const dev = process.argv.includes("--dev");
 const app = next({ dev });
@@ -98,8 +110,9 @@ const DAY_MS = 86_400_000;
 const STATUS_DAYS = 30; // checks expire after 30 days
 let statusCache;
 
-// Per-monitor daily uptime for the public status page. Only the origin of
-// each URL leaves the server, for the favicon.
+// Herkese açık durum sayfası verisi. Gizlilik: URL/origin, hata metni, IP ve
+// faz süreleri panele özeldir — buraya yalnız ad + günlük özet + son durum
+// (at/ms/status/ok) çıkar; URL hiçbir şekilde sızmaz.
 async function statusData() {
   if (statusCache && Date.now() - statusCache.at < INTERVAL_MS) return statusCache.data;
   const since = new Date().setUTCHours(0, 0, 0, 0) - (STATUS_DAYS - 1) * DAY_MS;
@@ -122,12 +135,12 @@ async function statusData() {
   const services = await Promise.all(
     monitors.map(async (m) => {
       const last = await Check.findOne({ monitor: m._id }).sort({ at: -1 }).lean();
+      const wire = last && toWire(last);
       return {
         id: String(m._id),
         name: m.name,
         group: m.group ? String(m.group) : "",
-        site: new URL(m.url).origin,
-        last: last && toWire(last),
+        last: wire ? { at: wire.at, ms: wire.ms, status: wire.status, ok: wire.ok } : null,
         days: Array.from({ length: STATUS_DAYS }, (_, i) => {
           const day = since + i * DAY_MS;
           const d = byKey.get(`${m._id}:${day}`);
@@ -144,16 +157,38 @@ async function statusData() {
 function wire(io) {
   const broadcast = async () => {
     statusCache = undefined;
-    io.emit("monitors", await snapshot());
-    io.emit("groups", await groupList());
+    io.to("auth").emit("monitors", await snapshot());
+    io.to("auth").emit("groups", await groupList());
   };
 
+  io.use(async (socket, next) => {
+    const token = cerezDegeri(socket.handshake.headers.cookie);
+    socket.data.oturum = token ? await oturumDenetle(token).catch(() => null) : null;
+    next();
+  });
+
   io.on("connection", (socket) => {
-    socket.on("list", async (ack) => ack(await snapshot()));
+    // panel tam veriyi 'auth' odasında; herkese açık /status yalnız 'public' odasında
+    socket.join(socket.data.oturum ? "auth" : "public");
+    const yetkili = () => !!socket.data.oturum;
+    const YETKI_HATASI = { error: "unauthorized" };
+    const KOKEN_HATASI = { error: "origin" };
+    // yazma uçlarında Origin kontrolü: tarayıcıdan geliyorsa aynı sunucu olmalı
+    const yazmaKokeni = () => kokenKabul(socket.handshake.headers);
+
+    socket.on("list", async (ack) => {
+      if (!yetkili()) return ack?.(YETKI_HATASI);
+      ack(await snapshot());
+    });
     socket.on("status", async (ack) => ack(await statusData()));
-    socket.on("groups", async (ack) => ack(await groupList()));
+    socket.on("groups", async (ack) => {
+      if (!yetkili()) return ack?.(YETKI_HATASI);
+      ack(await groupList());
+    });
 
     socket.on("group:add", async (name, ack) => {
+      if (!yetkili()) return ack?.(YETKI_HATASI);
+      if (!yazmaKokeni()) return ack?.(KOKEN_HATASI);
       if (!groupName(name)) return ack({ error: "Give the tab a name." });
       const group = await Group.create({ name: groupName(name), order: await Group.countDocuments() });
       ack({ id: String(group._id) });
@@ -162,6 +197,8 @@ function wire(io) {
 
     // monitors: every monitor id that belongs in the tab; a monitor is in one tab at most
     socket.on("group:save", async ({ id, name, monitors }, ack) => {
+      if (!yetkili()) return ack?.(YETKI_HATASI);
+      if (!yazmaKokeni()) return ack?.(KOKEN_HATASI);
       if (!mongoose.isValidObjectId(id)) return ack({ error: "This tab no longer exists." });
       if (!groupName(name)) return ack({ error: "Give the tab a name." });
       const ids = (Array.isArray(monitors) ? monitors : []).filter((m) => mongoose.isValidObjectId(m));
@@ -175,6 +212,8 @@ function wire(io) {
 
     // the monitors stay, they just leave the tab
     socket.on("group:remove", async (id, ack) => {
+      if (!yetkili()) return ack?.(YETKI_HATASI);
+      if (!yazmaKokeni()) return ack?.(KOKEN_HATASI);
       if (!mongoose.isValidObjectId(id)) return ack();
       await Promise.all([Group.deleteOne({ _id: id }), Monitor.updateMany({ group: id }, { group: null })]);
       ack();
@@ -182,6 +221,7 @@ function wire(io) {
     });
 
     socket.on("history", async ({ id, range }, ack) => {
+      if (!yetkili()) return ack?.(YETKI_HATASI);
       if (!mongoose.isValidObjectId(id) || !RANGES[range]) return ack([]);
       const since = new Date(Date.now() - RANGES[range]);
       const checks = await Check.find({ monitor: id, at: { $gte: since } }).sort({ at: 1 }).lean();
@@ -189,6 +229,8 @@ function wire(io) {
     });
 
     socket.on("add", async (data, ack) => {
+      if (!yetkili()) return ack?.(YETKI_HATASI);
+      if (!yazmaKokeni()) return ack?.(KOKEN_HATASI);
       const fields = parseMonitor(data);
       if (fields.error) return ack(fields);
       // new monitors go to the end of the custom order
@@ -200,6 +242,8 @@ function wire(io) {
 
     // Checks stay attached to the monitor id, so editing keeps the history.
     socket.on("edit", async (data, ack) => {
+      if (!yetkili()) return ack?.(YETKI_HATASI);
+      if (!yazmaKokeni()) return ack?.(KOKEN_HATASI);
       const monitor = mongoose.isValidObjectId(data?.id) && (await Monitor.findById(data.id).lean());
       if (!monitor) return ack({ error: "This monitor no longer exists." });
       const fields = parseMonitor({ ...data, ...withStored(data, monitor) });
@@ -214,6 +258,8 @@ function wire(io) {
 
     // ids: every monitor id in the new custom order
     socket.on("reorder", async (ids, ack) => {
+      if (!yetkili()) return ack?.(YETKI_HATASI);
+      if (!yazmaKokeni()) return ack?.(KOKEN_HATASI);
       if (!Array.isArray(ids) || !ids.every((id) => mongoose.isValidObjectId(id))) return ack();
       await Monitor.bulkWrite(ids.map((id, order) => ({ updateOne: { filter: { _id: id }, update: { order } } })));
       await broadcast();
@@ -221,6 +267,8 @@ function wire(io) {
     });
 
     socket.on("remove", async (id, ack) => {
+      if (!yetkili()) return ack?.(YETKI_HATASI);
+      if (!yazmaKokeni()) return ack?.(KOKEN_HATASI);
       if (!mongoose.isValidObjectId(id)) return ack();
       await Promise.all([Monitor.deleteOne({ _id: id }), Check.deleteMany({ monitor: id })]);
       ack();
@@ -229,12 +277,119 @@ function wire(io) {
   });
 }
 
+// --- HTTP: sayfa kapısı + kimlik uçları ------------------------------------
+// Panel (`/`, `/m/...`) oturum ister; `/status` herkese açıktır.
+// `/giris` oturumluyken panele, `/kurulum` kayıt kapatıldıysa girişe döner.
+
+const json = (res, kod, govde, ekBasliklar = []) => {
+  const metin = JSON.stringify(govde);
+  res.writeHead(kod, { "content-type": "application/json; charset=utf-8", ...Object.fromEntries(ekBasliklar) });
+  res.end(metin);
+};
+
+async function govdeOku(req, ustSinir = 8192) {
+  const parcalar = [];
+  let toplam = 0;
+  for await (const parca of req) {
+    toplam += parca.length;
+    if (toplam > ustSinir) throw new Error("body too large");
+    parcalar.push(parca);
+  }
+  return JSON.parse(Buffer.concat(parcalar).toString("utf8") || "{}");
+}
+
+const ipNereden = (req) => req.socket.remoteAddress || "";
+
+async function kimlikUclari(req, res) {
+  const yol = req.url.split("?")[0];
+  if (req.method !== "POST" || !["/api/giris", "/api/kurulum", "/api/cikis"].includes(yol)) return false;
+
+  if (!kokenKabul(req.headers)) return json(res, 403, { hata: "Origin reddedildi." }), true;
+
+  const guvenli = req.headers["x-forwarded-proto"] === "https";
+  const token = cerezDegeri(req.headers.cookie);
+
+  try {
+    if (yol === "/api/cikis") {
+      await cikisYap(token);
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8", "set-cookie": cerezBasligi("", { guvenli, sil: true }) });
+      res.end('{"tamam":true}');
+      return true;
+    }
+
+    const govde = await govdeOku(req);
+    const eposta = String(govde.eposta || "").trim().toLowerCase();
+    const ozet = String(govde.ozet || "");
+
+    if (yol === "/api/kurulum") {
+      if (hizSiniri(`kurulum:${ipNereden(req)}`, 10, 15 * 60_000)) return json(res, 429, { hata: "Çok fazla deneme." }), true;
+      const sonuc = await ilkHesabiAc(eposta, ozet);
+      if (sonuc.hata) return json(res, sonuc.kod || 400, { hata: sonuc.hata }), true;
+      const giris = await girisYap(eposta, ozet, ipNereden(req), "kurulum");
+      if (!giris.token) return json(res, 500, { hata: "Oturum açılamadı." }), true;
+      return json(res, 200, { tamam: true }, [["set-cookie", cerezBasligi(giris.token, { guvenli })]]), true;
+    }
+
+    // /api/giris
+    const giris = await girisYap(eposta, ozet, ipNereden(req));
+    if (giris.hata) return json(res, giris.kod || 401, { hata: giris.hata }), true;
+    return json(res, 200, { tamam: true }, [["set-cookie", cerezBasligi(giris.token, { guvenli })]]), true;
+  } catch {
+    return json(res, 400, { hata: "İstek anlaşılamadı." }), true;
+  }
+}
+
+function yonlendir(res, yol) {
+  res.writeHead(307, { location: yol });
+  res.end();
+}
+
+async function kapı(req, res, handle) {
+  if (await kimlikUclari(req, res)) return;
+
+  const yol = req.url.split("?")[0];
+  const token = cerezDegeri(req.headers.cookie);
+  const oturum = token ? await oturumDenetle(token) : null;
+
+  // kayar çerez: geçerli oturumla panel sayfaları çerezin ömrünü tazeler
+  // (writeHead, önceden setHeader ile konan başlıklarla birleşir)
+  if (oturum && (yol === "/" || yol.startsWith("/m/")) && req.headers["x-forwarded-proto"]) {
+    res.setHeader("set-cookie", cerezBasligi(token, { guvenli: req.headers["x-forwarded-proto"] === "https" }));
+  }
+
+  const panel = yol === "/" || yol.startsWith("/m/");
+  if (panel) return oturum ? handle(req, res) : yonlendir(res, "/giris");
+
+  if (yol === "/giris") return oturum ? yonlendir(res, "/") : handle(req, res);
+  if (yol === "/kurulum") {
+    if (oturum) return yonlendir(res, "/");
+    if (!(await setupAcikMi())) return yonlendir(res, "/giris");
+    return handle(req, res);
+  }
+
+  return handle(req, res); // /status, _next, icon… herkese açık
+}
+
 await mongoose.connect(MONGODB_URI);
+await authBootstrap();
 await app.prepare();
 
-const server = createServer(app.getRequestHandler());
+const server = createServer((req, res) => {
+  kapı(req, res, app.getRequestHandler()).catch((err) => {
+    console.error("gate error", err);
+    res.writeHead(500);
+    res.end();
+  });
+});
 const io = new Server(server);
 wire(io);
-startChecker(io);
+
+// Kontrolcü (dakikalık denetim turu) varsayılan DURUR: mevcut uptime uygulamamız
+// ölçmeye devam ediyor, çift kontrolcülük olmasın. Açmak için MOON_KONTROLCU=1.
+if (process.env.MOON_KONTROLCU === "1") {
+  startChecker(io);
+} else {
+  console.log("[moon] kontrolcü durduruldu — açmak için MOON_KONTROLCU=1");
+}
 
 server.listen(PORT, "0.0.0.0", () => console.log(`moon ready on :${PORT}`));

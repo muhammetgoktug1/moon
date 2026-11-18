@@ -20,6 +20,10 @@ services:
     environment:
       MONGODB_URI: mongodb://mongo:27017/moon
       PORT: 3000
+      # Kontrolcü (dakikalık tur) varsayılan DURUR — çift kontrolcülük olmasın.
+      MOON_KONTROLCU: ${MOON_KONTROLCU:-0}
+      # 1 = izlenen sitelerde self-signed/iç CA sertifikaları da kabul edilir.
+      MOON_GUVENSIZ_TLS: ${MOON_GUVENSIZ_TLS:-0}
     depends_on:
       mongo:
         condition: service_healthy

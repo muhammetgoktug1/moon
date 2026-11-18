@@ -51,6 +51,16 @@ const Header = ({ lastAt }) => {
         <Link href="/status" className={Styles.metaItem}>
           Status page
         </Link>
+        <button
+          className={Styles.metaItem}
+          title="Sign out"
+          onClick={async () => {
+            await fetch("/api/cikis", { method: "POST" }).catch(() => {});
+            window.location.assign("/giris");
+          }}
+        >
+          Sign out
+        </button>
         <MonitorDialog />
         <FullscreenButton />
       </div>
