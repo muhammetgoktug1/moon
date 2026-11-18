@@ -10,11 +10,15 @@ Kullanım:
   python3 scripts/privacy-scan.py origin/main     # başka base
 
 İzin listesi (bilinçli):
-  - example.com / example.net / example.org / localhost (sentetik fikstürler)
+  - example.com / example.net / example.org ve ALT ALANLARI + localhost
+    (sentetik fikstürler; evil.com köken testi klişesi)
   - 127.0.0.1, 0.0.0.0 (loopback), RFC 5737 test ağları (192.0.2.x,
     198.51.100.x, 203.0.113.x), 1.1.1.1/8.8.8.8 (genel DNS sabitleri)
   - bilinen varsayılan portlar (80, 443, 3000, 8080, 27017) ve IANA özel
-    aralığı (>= 49152) — sentetik fikstür portları
+    aralığı (>= 49152) — sentetik fikstür portları; saat (14:23) ve dilim
+    ([:120]) sözdzaimi port sayılmaz
+  - scripts/privacy-scan.py desen taramasından muaftır (kendi desen dizgeleri
+    kendisini eşleştirir; içinde gerçek değer yoktur)
 Gerçek adlar repoda bulunmadığı için betik kendisi ek desen İÇERMEZ; makineye
 özel desenler çalıştırma anında `PRIVACY_EXTRA_PATTERNS` env'iyle verilir
 (virgülle ayrılmış regex listesi; örn. gerçek alan adı, kullanıcı adı).
@@ -27,7 +31,10 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-DOMAIN_ALLOW = {"example.com", "example.net", "example.org", "localhost"}
+DOMAIN_ALLOW = {"example.com", "example.net", "example.org", "localhost", "evil.com"}
+# tarayıcı kendi desen dizgelerini içerdiği için desen taramasından muaf tutulur
+# (içinde gerçek değer yok; içerik gözden geçirilmiş sayılır)
+SELF_EXEMPT = {"scripts/privacy-scan.py"}
 IP_ALLOW = {"127.0.0.1", "0.0.0.0", "255.255.255.255", "1.1.1.1", "8.8.8.8"}
 TEST_NETS = re.compile(r"^(192\.0\.2|198\.51\.100|203\.0\.113)\.")
 PORT_DEFAULTS = {80, 443, 3000, 8080, 27017}
@@ -65,18 +72,32 @@ def ip_ok(ip):
     return ip in IP_ALLOW or bool(TEST_NETS.match(ip))
 
 
+def domain_ok(domain):
+    d = domain.lower()
+    return d in DOMAIN_ALLOW or any(d.endswith("." + a) for a in DOMAIN_ALLOW - {"evil.com"} if a != "localhost")
+
+
+def clean_for_ports(text):
+    """Port taraması öncesi saat (14:23) ve dilim ([:120]) sözdzaimini kaldır."""
+    text = re.sub(r"(?<!\d)\d{1,2}:\d{2}(?!\d)", " ", text)  # saat/süre
+    text = re.sub(r"\[\s*:\s*\d+\s*\]", " ", text)  # python/js dilimi [:n]
+    return text
+
+
 def scan(base, extra_patterns):
     findings = []
     scanned = 0
     for file_name, text in added_lines(base):
         scanned += 1
+        if file_name in SELF_EXEMPT:
+            continue
         for ip in IP_RE.findall(text):
             if not ip_ok(ip):
                 findings.append((file_name, "IP", ip, text.strip()[:120]))
         for domain in DOMAIN_RE.findall(text):
-            if domain.lower() not in DOMAIN_ALLOW:
+            if not domain_ok(domain):
                 findings.append((file_name, "alan adi", domain, text.strip()[:120]))
-        for port in PORT_RE.findall(text):
+        for port in PORT_RE.findall(clean_for_ports(text)):
             if int(port) not in PORT_DEFAULTS and int(port) < 49152:
                 findings.append((file_name, "port", ":" + port, text.strip()[:120]))
         home = HOME_RE.search(text)
