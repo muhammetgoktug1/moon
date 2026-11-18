@@ -92,7 +92,7 @@ const Setup = () => {
 
         <div className={Styles.footer}>
           <Link href="/status">Herkese açık durum sayfası</Link>
-          <span>moon · sistem.com</span>
+          <span>moon</span>
         </div>
       </div>
     </main>

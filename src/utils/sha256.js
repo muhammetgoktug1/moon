@@ -1,5 +1,5 @@
 // Saf JS SHA-256 — crypto.subtle yalnız güvenli bağlamda (https/localhost) vardır;
-// http://moon.sistem.com üzerinden giriş de çalışsın diye bağımlılıksız uygulama.
+// http üzerinden servis edilen kurulumlarda giriş de çalışsın diye bağımlılıksız uygulama.
 // Doğruluğu lib/auth.test.js'de node:crypto ile karşılaştırılır.
 
 const K = [
