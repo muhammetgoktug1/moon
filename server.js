@@ -2,22 +2,23 @@ import { createServer } from "node:http";
 import next from "next";
 import mongoose from "mongoose";
 import { Server } from "socket.io";
-import { MONGODB_URI, PORT } from "./lib/config.js";
+import { MONGODB_URI, PORT, warnLegacyEnv } from "./lib/config.js";
 import { Monitor, Check, Group } from "./lib/models.js";
 import { startChecker, checkOne, toWire, certWire } from "./lib/checker.js";
-import { disisUcu } from "./lib/disis.js";
+import { externalEndpoint } from "./lib/external.js";
+import { routeGate } from "./lib/routes.js";
 import { RECENT, RANGES, INTERVAL_MS } from "./lib/stats.js";
 import {
   authBootstrap,
-  setupAcikMi,
-  ilkHesabiAc,
-  girisYap,
-  oturumDenetle,
-  cikisYap,
-  cerezDegeri,
-  cerezBasligi,
-  hizSiniri,
-  kokenKabul,
+  setupOpen,
+  openFirstAccount,
+  login,
+  verifySession,
+  logout,
+  cookieValue,
+  cookieHeader,
+  rateLimit,
+  originAllowed,
 } from "./lib/auth.js";
 
 const dev = process.argv.includes("--dev");
@@ -163,33 +164,33 @@ function wire(io) {
   };
 
   io.use(async (socket, next) => {
-    const token = cerezDegeri(socket.handshake.headers.cookie);
-    socket.data.oturum = token ? await oturumDenetle(token).catch(() => null) : null;
+    const token = cookieValue(socket.handshake.headers.cookie);
+    socket.data.session = token ? await verifySession(token).catch(() => null) : null;
     next();
   });
 
   io.on("connection", (socket) => {
     // panel tam veriyi 'auth' odasında; herkese açık /status yalnız 'public' odasında
-    socket.join(socket.data.oturum ? "auth" : "public");
-    const yetkili = () => !!socket.data.oturum;
-    const YETKI_HATASI = { error: "unauthorized" };
-    const KOKEN_HATASI = { error: "origin" };
+    socket.join(socket.data.session ? "auth" : "public");
+    const authed = () => !!socket.data.session;
+    const AUTH_ERROR = { error: "unauthorized" };
+    const ORIGIN_ERROR = { error: "origin" };
     // yazma uçlarında Origin kontrolü: tarayıcıdan geliyorsa aynı sunucu olmalı
-    const yazmaKokeni = () => kokenKabul(socket.handshake.headers);
+    const writeOriginOk = () => originAllowed(socket.handshake.headers);
 
     socket.on("list", async (ack) => {
-      if (!yetkili()) return ack?.(YETKI_HATASI);
+      if (!authed()) return ack?.(AUTH_ERROR);
       ack(await snapshot());
     });
     socket.on("status", async (ack) => ack(await statusData()));
     socket.on("groups", async (ack) => {
-      if (!yetkili()) return ack?.(YETKI_HATASI);
+      if (!authed()) return ack?.(AUTH_ERROR);
       ack(await groupList());
     });
 
     socket.on("group:add", async (name, ack) => {
-      if (!yetkili()) return ack?.(YETKI_HATASI);
-      if (!yazmaKokeni()) return ack?.(KOKEN_HATASI);
+      if (!authed()) return ack?.(AUTH_ERROR);
+      if (!writeOriginOk()) return ack?.(ORIGIN_ERROR);
       if (!groupName(name)) return ack({ error: "Give the tab a name." });
       const group = await Group.create({ name: groupName(name), order: await Group.countDocuments() });
       ack({ id: String(group._id) });
@@ -198,8 +199,8 @@ function wire(io) {
 
     // monitors: every monitor id that belongs in the tab; a monitor is in one tab at most
     socket.on("group:save", async ({ id, name, monitors }, ack) => {
-      if (!yetkili()) return ack?.(YETKI_HATASI);
-      if (!yazmaKokeni()) return ack?.(KOKEN_HATASI);
+      if (!authed()) return ack?.(AUTH_ERROR);
+      if (!writeOriginOk()) return ack?.(ORIGIN_ERROR);
       if (!mongoose.isValidObjectId(id)) return ack({ error: "This tab no longer exists." });
       if (!groupName(name)) return ack({ error: "Give the tab a name." });
       const ids = (Array.isArray(monitors) ? monitors : []).filter((m) => mongoose.isValidObjectId(m));
@@ -213,8 +214,8 @@ function wire(io) {
 
     // the monitors stay, they just leave the tab
     socket.on("group:remove", async (id, ack) => {
-      if (!yetkili()) return ack?.(YETKI_HATASI);
-      if (!yazmaKokeni()) return ack?.(KOKEN_HATASI);
+      if (!authed()) return ack?.(AUTH_ERROR);
+      if (!writeOriginOk()) return ack?.(ORIGIN_ERROR);
       if (!mongoose.isValidObjectId(id)) return ack();
       await Promise.all([Group.deleteOne({ _id: id }), Monitor.updateMany({ group: id }, { group: null })]);
       ack();
@@ -222,7 +223,7 @@ function wire(io) {
     });
 
     socket.on("history", async ({ id, range }, ack) => {
-      if (!yetkili()) return ack?.(YETKI_HATASI);
+      if (!authed()) return ack?.(AUTH_ERROR);
       if (!mongoose.isValidObjectId(id) || !RANGES[range]) return ack([]);
       const since = new Date(Date.now() - RANGES[range]);
       const checks = await Check.find({ monitor: id, at: { $gte: since } }).sort({ at: 1 }).lean();
@@ -230,8 +231,8 @@ function wire(io) {
     });
 
     socket.on("add", async (data, ack) => {
-      if (!yetkili()) return ack?.(YETKI_HATASI);
-      if (!yazmaKokeni()) return ack?.(KOKEN_HATASI);
+      if (!authed()) return ack?.(AUTH_ERROR);
+      if (!writeOriginOk()) return ack?.(ORIGIN_ERROR);
       const fields = parseMonitor(data);
       if (fields.error) return ack(fields);
       // new monitors go to the end of the custom order
@@ -243,8 +244,8 @@ function wire(io) {
 
     // Checks stay attached to the monitor id, so editing keeps the history.
     socket.on("edit", async (data, ack) => {
-      if (!yetkili()) return ack?.(YETKI_HATASI);
-      if (!yazmaKokeni()) return ack?.(KOKEN_HATASI);
+      if (!authed()) return ack?.(AUTH_ERROR);
+      if (!writeOriginOk()) return ack?.(ORIGIN_ERROR);
       const monitor = mongoose.isValidObjectId(data?.id) && (await Monitor.findById(data.id).lean());
       if (!monitor) return ack({ error: "This monitor no longer exists." });
       const fields = parseMonitor({ ...data, ...withStored(data, monitor) });
@@ -259,8 +260,8 @@ function wire(io) {
 
     // ids: every monitor id in the new custom order
     socket.on("reorder", async (ids, ack) => {
-      if (!yetkili()) return ack?.(YETKI_HATASI);
-      if (!yazmaKokeni()) return ack?.(KOKEN_HATASI);
+      if (!authed()) return ack?.(AUTH_ERROR);
+      if (!writeOriginOk()) return ack?.(ORIGIN_ERROR);
       if (!Array.isArray(ids) || !ids.every((id) => mongoose.isValidObjectId(id))) return ack();
       await Monitor.bulkWrite(ids.map((id, order) => ({ updateOne: { filter: { _id: id }, update: { order } } })));
       await broadcast();
@@ -268,8 +269,8 @@ function wire(io) {
     });
 
     socket.on("remove", async (id, ack) => {
-      if (!yetkili()) return ack?.(YETKI_HATASI);
-      if (!yazmaKokeni()) return ack?.(KOKEN_HATASI);
+      if (!authed()) return ack?.(AUTH_ERROR);
+      if (!writeOriginOk()) return ack?.(ORIGIN_ERROR);
       if (!mongoose.isValidObjectId(id)) return ack();
       await Promise.all([Monitor.deleteOne({ _id: id }), Check.deleteMany({ monitor: id })]);
       ack();
@@ -278,109 +279,103 @@ function wire(io) {
   });
 }
 
-// --- HTTP: sayfa kapısı + kimlik uçları ------------------------------------
+// --- HTTP: page gate + auth endpoints --------------------------------------
 // Panel (`/`, `/m/...`) oturum ister; `/status` herkese açıktır.
-// `/giris` oturumluyken panele, `/kurulum` kayıt kapatıldıysa girişe döner.
+// `/login` oturumluyken panele, `/setup` kayıt kapatıldıysa girişe döner.
+// Eski yollar (/giris, /kurulum, /api/… Türkçe adları) 307 ile yenilere yönlenir.
 
-const json = (res, kod, govde, ekBasliklar = []) => {
-  const metin = JSON.stringify(govde);
-  res.writeHead(kod, { "content-type": "application/json; charset=utf-8", ...Object.fromEntries(ekBasliklar) });
-  res.end(metin);
+const json = (res, code, body, extraHeaders = []) => {
+  const text = JSON.stringify(body);
+  res.writeHead(code, { "content-type": "application/json; charset=utf-8", ...Object.fromEntries(extraHeaders) });
+  res.end(text);
 };
 
-async function govdeOku(req, ustSinir = 8192) {
-  const parcalar = [];
-  let toplam = 0;
-  for await (const parca of req) {
-    toplam += parca.length;
-    if (toplam > ustSinir) throw new Error("body too large");
-    parcalar.push(parca);
+async function readBody(req, limit = 8192) {
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of req) {
+    total += chunk.length;
+    if (total > limit) throw new Error("body too large");
+    chunks.push(chunk);
   }
-  return JSON.parse(Buffer.concat(parcalar).toString("utf8") || "{}");
+  return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }
 
-const ipNereden = (req) => req.socket.remoteAddress || "";
+const ipFrom = (req) => req.socket.remoteAddress || "";
 
-async function kimlikUclari(req, res) {
-  const yol = req.url.split("?")[0];
-  if (req.method !== "POST" || !["/api/giris", "/api/kurulum", "/api/cikis"].includes(yol)) return false;
+async function authEndpoints(req, res) {
+  const path = req.url.split("?")[0];
+  if (req.method !== "POST" || !["/api/login", "/api/setup", "/api/logout"].includes(path)) return false;
 
-  if (!kokenKabul(req.headers)) return json(res, 403, { hata: "Origin reddedildi." }), true;
+  if (!originAllowed(req.headers)) return json(res, 403, { error: "Origin reddedildi." }), true;
 
-  const guvenli = req.headers["x-forwarded-proto"] === "https";
-  const token = cerezDegeri(req.headers.cookie);
+  const secure = req.headers["x-forwarded-proto"] === "https";
+  const token = cookieValue(req.headers.cookie);
 
   try {
-    if (yol === "/api/cikis") {
-      await cikisYap(token);
-      res.writeHead(200, { "content-type": "application/json; charset=utf-8", "set-cookie": cerezBasligi("", { guvenli, sil: true }) });
-      res.end('{"tamam":true}');
+    if (path === "/api/logout") {
+      await logout(token);
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8", "set-cookie": cookieHeader("", { secure, clear: true }) });
+      res.end('{"ok":true}');
       return true;
     }
 
-    const govde = await govdeOku(req);
-    const eposta = String(govde.eposta || "").trim().toLowerCase();
-    const ozet = String(govde.ozet || "");
+    const body = await readBody(req);
+    const email = String(body.email || "").trim().toLowerCase();
+    const digest = String(body.digest || "");
 
-    if (yol === "/api/kurulum") {
-      if (hizSiniri(`kurulum:${ipNereden(req)}`, 10, 15 * 60_000)) return json(res, 429, { hata: "Çok fazla deneme." }), true;
-      const sonuc = await ilkHesabiAc(eposta, ozet);
-      if (sonuc.hata) return json(res, sonuc.kod || 400, { hata: sonuc.hata }), true;
-      const giris = await girisYap(eposta, ozet, ipNereden(req), "kurulum");
-      if (!giris.token) return json(res, 500, { hata: "Oturum açılamadı." }), true;
-      return json(res, 200, { tamam: true }, [["set-cookie", cerezBasligi(giris.token, { guvenli })]]), true;
+    if (path === "/api/setup") {
+      if (rateLimit(`setup:${ipFrom(req)}`, 10, 15 * 60_000)) return json(res, 429, { error: "Çok fazla deneme." }), true;
+      const result = await openFirstAccount(email, digest);
+      if (result.error) return json(res, result.code || 400, { error: result.error }), true;
+      const loginResult = await login(email, digest, ipFrom(req), "setup");
+      if (!loginResult.token) return json(res, 500, { error: "Oturum açılamadı." }), true;
+      return json(res, 200, { ok: true }, [["set-cookie", cookieHeader(loginResult.token, { secure })]]), true;
     }
 
-    // /api/giris
-    const giris = await girisYap(eposta, ozet, ipNereden(req));
-    if (giris.hata) return json(res, giris.kod || 401, { hata: giris.hata }), true;
-    return json(res, 200, { tamam: true }, [["set-cookie", cerezBasligi(giris.token, { guvenli })]]), true;
+    // /api/login
+    const loginResult = await login(email, digest, ipFrom(req));
+    if (loginResult.error) return json(res, loginResult.code || 401, { error: loginResult.error }), true;
+    return json(res, 200, { ok: true }, [["set-cookie", cookieHeader(loginResult.token, { secure })]]), true;
   } catch {
-    return json(res, 400, { hata: "İstek anlaşılamadı." }), true;
+    return json(res, 400, { error: "İstek anlaşılamadı." }), true;
   }
 }
 
-function yonlendir(res, yol) {
-  res.writeHead(307, { location: yol });
+function redirect(res, location) {
+  res.writeHead(307, { location });
   res.end();
 }
 
-async function kapı(req, res, handle) {
+async function gate(req, res, handle) {
   // dış özet ucu (servis token'lı; 2b köprüsü için) — kimlik uçlarından önce
-  if (await disisUcu(req, res)) return;
-  if (await kimlikUclari(req, res)) return;
+  if (await externalEndpoint(req, res)) return;
+  if (await authEndpoints(req, res)) return;
 
-  const yol = req.url.split("?")[0];
-  const token = cerezDegeri(req.headers.cookie);
-  const oturum = token ? await oturumDenetle(token) : null;
+  const path = req.url.split("?")[0];
+  const token = cookieValue(req.headers.cookie);
+  const session = token ? await verifySession(token) : null;
 
   // kayar çerez: geçerli oturumla panel sayfaları çerezin ömrünü tazeler
   // (writeHead, önceden setHeader ile konan başlıklarla birleşir)
-  if (oturum && (yol === "/" || yol.startsWith("/m/")) && req.headers["x-forwarded-proto"]) {
-    res.setHeader("set-cookie", cerezBasligi(token, { guvenli: req.headers["x-forwarded-proto"] === "https" }));
+  if (session && (path === "/" || path.startsWith("/m/")) && req.headers["x-forwarded-proto"]) {
+    res.setHeader("set-cookie", cookieHeader(token, { secure: req.headers["x-forwarded-proto"] === "https" }));
   }
 
-  const panel = yol === "/" || yol.startsWith("/m/");
-  if (panel) return oturum ? handle(req, res) : yonlendir(res, "/giris");
-
-  if (yol === "/giris") return oturum ? yonlendir(res, "/") : handle(req, res);
-  if (yol === "/kurulum") {
-    if (oturum) return yonlendir(res, "/");
-    if (!(await setupAcikMi())) return yonlendir(res, "/giris");
-    return handle(req, res);
-  }
-
-  return handle(req, res); // /status, _next, icon… herkese açık
+  const decision = routeGate(path, { session, setupOpen: await setupOpen() });
+  if (decision.redirect) return redirect(res, decision.redirect);
+  return handle(req, res);
 }
 
 await mongoose.connect(MONGODB_URI);
 await authBootstrap();
+warnLegacyEnv();
 // check TTL 30g → 90g (panel kuralı): mevcut indeks seçenekleri farklıysa yeniden kurar.
 await Check.syncIndexes().catch((err) => console.error("check index sync", err));
 await app.prepare();
 
 const server = createServer((req, res) => {
-  kapı(req, res, app.getRequestHandler()).catch((err) => {
+  gate(req, res, app.getRequestHandler()).catch((err) => {
     console.error("gate error", err);
     res.writeHead(500);
     res.end();
@@ -390,11 +385,11 @@ const io = new Server(server);
 wire(io);
 
 // Kontrolcü (dakikalık denetim turu) varsayılan DURUR: mevcut uptime uygulamamız
-// ölçmeye devam ediyor, çift kontrolcülük olmasın. Açmak için MOON_KONTROLCU=1.
-if (process.env.MOON_KONTROLCU === "1") {
+// ölçmeye devam ediyor, çift kontrolcülük olmasın. Açmak için MOON_CHECKER=1.
+if (process.env.MOON_CHECKER === "1") {
   startChecker(io);
 } else {
-  console.log("[moon] kontrolcü durduruldu — açmak için MOON_KONTROLCU=1");
+  console.log("[moon] checker disabled — set MOON_CHECKER=1 to enable");
 }
 
 server.listen(PORT, "0.0.0.0", () => console.log(`moon ready on :${PORT}`));

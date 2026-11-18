@@ -55,8 +55,8 @@ const Header = ({ lastAt }) => {
           className={Styles.metaItem}
           title="Sign out"
           onClick={async () => {
-            await fetch("/api/cikis", { method: "POST" }).catch(() => {});
-            window.location.assign("/giris");
+            await fetch("/api/logout", { method: "POST" }).catch(() => {});
+            window.location.assign("/login");
           }}
         >
           Sign out

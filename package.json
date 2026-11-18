@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "node server.js",
     "test": "node --test \"lib/*.test.js\"",
-    "goc": "node scripts/goc-sqlite-mongo.mjs"
+    "migrate": "node scripts/migrate-sqlite-mongo.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

@@ -15,24 +15,24 @@ const K = [
 
 const rotr = (x, n) => (x >>> n) | (x << (32 - n));
 
-export const sha256 = (mesaj) => {
-  const bytes = new TextEncoder().encode(String(mesaj));
-  const uzunluk = bytes.length;
-  const bitUzun = uzunluk * 8;
-  const blokSayi = Math.ceil((uzunluk + 9) / 64);
-  const tampon = new Uint8Array(blokSayi * 64);
-  tampon.set(bytes);
-  tampon[uzunluk] = 0x80;
-  const dv = new DataView(tampon.buffer);
-  dv.setUint32(tampon.length - 4, bitUzun >>> 0);
-  dv.setUint32(tampon.length - 8, Math.floor(bitUzun / 0x100000000));
+export const sha256 = (message) => {
+  const bytes = new TextEncoder().encode(String(message));
+  const length = bytes.length;
+  const bitLength = length * 8;
+  const blockCount = Math.ceil((length + 9) / 64);
+  const buffer = new Uint8Array(blockCount * 64);
+  buffer.set(bytes);
+  buffer[length] = 0x80;
+  const dv = new DataView(buffer.buffer);
+  dv.setUint32(buffer.length - 4, bitLength >>> 0);
+  dv.setUint32(buffer.length - 8, Math.floor(bitLength / 0x100000000));
 
   let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a;
   let h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
   const w = new Int32Array(64);
 
-  for (let blok = 0; blok < tampon.length; blok += 64) {
-    for (let i = 0; i < 16; i++) w[i] = dv.getInt32(blok + i * 4);
+  for (let offset = 0; offset < buffer.length; offset += 64) {
+    for (let i = 0; i < 16; i++) w[i] = dv.getInt32(offset + i * 4);
     for (let i = 16; i < 64; i++) {
       const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3);
       const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);

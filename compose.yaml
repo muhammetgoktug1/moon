@@ -21,13 +21,13 @@ services:
       MONGODB_URI: mongodb://mongo:27017/moon
       PORT: 3000
       # Kontrolcü (dakikalık tur) varsayılan DURUR — çift kontrolcülük olmasın.
-      MOON_KONTROLCU: ${MOON_KONTROLCU:-0}
+      MOON_CHECKER: ${MOON_CHECKER:-0}
       # 1 = izlenen sitelerde self-signed/iç CA sertifikaları da kabul edilir.
-      MOON_GUVENSIZ_TLS: ${MOON_GUVENSIZ_TLS:-0}
-      # Dış özet ucu /api/disis/ozet için servis token'ı (boşsa uç kapalı).
-      MOON_SERVIS_TOKEN: ${MOON_SERVIS_TOKEN:-}
+      MOON_INSECURE_TLS: ${MOON_INSECURE_TLS:-0}
+      # Dış özet ucu /api/external/summary için servis token'ı (boşsa uç kapalı).
+      MOON_SERVICE_TOKEN: ${MOON_SERVICE_TOKEN:-}
       # Bildirim köprüsü conf yolu (gruplu WhatsApp; makineye özel mount override'da).
-      MOON_BILDIRIM_CONF: ${MOON_BILDIRIM_CONF:-/data/bildirim.conf.json}
+      MOON_NOTIFY_CONF: ${MOON_NOTIFY_CONF:-/data/bildirim.conf.json}
     depends_on:
       mongo:
         condition: service_healthy
