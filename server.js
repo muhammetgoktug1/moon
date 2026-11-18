@@ -5,6 +5,7 @@ import { Server } from "socket.io";
 import { MONGODB_URI, PORT } from "./lib/config.js";
 import { Monitor, Check, Group } from "./lib/models.js";
 import { startChecker, checkOne, toWire, certWire } from "./lib/checker.js";
+import { disisUcu } from "./lib/disis.js";
 import { RECENT, RANGES, INTERVAL_MS } from "./lib/stats.js";
 import {
   authBootstrap,
@@ -345,6 +346,8 @@ function yonlendir(res, yol) {
 }
 
 async function kapı(req, res, handle) {
+  // dış özet ucu (servis token'lı; 2b köprüsü için) — kimlik uçlarından önce
+  if (await disisUcu(req, res)) return;
   if (await kimlikUclari(req, res)) return;
 
   const yol = req.url.split("?")[0];
@@ -372,6 +375,8 @@ async function kapı(req, res, handle) {
 
 await mongoose.connect(MONGODB_URI);
 await authBootstrap();
+// check TTL 30g → 90g (panel kuralı): mevcut indeks seçenekleri farklıysa yeniden kurar.
+await Check.syncIndexes().catch((err) => console.error("check index sync", err));
 await app.prepare();
 
 const server = createServer((req, res) => {

@@ -31,5 +31,5 @@ for (const a of veri.atlanan) console.warn(`  ATLANDI: ${a.ad} — ${a.neden} ($
 const sonuc = await hedefeYaz(uri, veri, { kurut });
 console.log(JSON.stringify(sonuc, null, 2));
 console.log(
-  `bitti: monitör +${sonuc.monitorlar.yeni}/${sonuc.monitorlar.toplam}, check +${sonuc.checkler.yeni}/${sonuc.checkler.toplam}, grup +${sonuc.gruplar.yeni}`,
+  `bitti: monitör +${sonuc.monitorlar.yeni}/${sonuc.monitorlar.toplam} (güncellenen: ${sonuc.monitorlar.guncellenen ?? 0}), check +${sonuc.checkler.yeni}/${sonuc.checkler.toplam}, grup +${sonuc.gruplar.yeni}`,
 );

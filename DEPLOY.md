@@ -22,6 +22,25 @@ veri ithali. Upstream'e PR/issue AÇILMAZ; tüm değişiklikler bu fork'ta kalı
 - **`MOON_GUVENSIZ_TLS=1`** → kontrolcü izlenen sitelerde self-signed/iç CA
   sertifikalarını da kabul eder (moon.sistem.com gibi `tls internal` arkasındaki
   servisleri izlemek için). Varsayılan 0.
+- **Faz 2a — panel checker kuralları (lib/checker.js):** monitör başına
+  `interval` (tur 60 sn), 20 sn zaman aşımı + istek başına 3 deneme (3 sn aralık),
+  DOWN için 3 onay döngüsü (`consecutiveFailures ≥ 3`, onaysız check
+  `confirmed:false` yazılır), down monitör 60 sn'de bir denenir, ≤8 paralel ölçüm,
+  tur başında kanarya (1.1.1.1 + 8.8.8.8; ikisi de düşükse tur iptal + log),
+  UA `HermesPanel-Uptime/1.0`, IPv4-öncelikli çözümleme (+ `MOON_SABIT_ALANLAR`/
+  `MOON_SABIT_IP` alan sabitleme), başarı 200–399 YA DA monitörün `beklenenKod`'u,
+  `keyword` ilk 300 KB'da, GET/HEAD/POST + başlık/gövde, dns/tcp/tls/server faz
+  kırılımı + cevaplayan IP, SSL bitiş ≤14 gün → günde bir uyarı olayı, check TTL
+  90 gün (Mongo TTL indeksi; açılışta `Check.syncIndexes()` 30g→90g göçünü yapar).
+- **Bildirim (lib/bildirim.js):** gruplu WhatsApp köprüsü. Conf biçimi
+  `uptime-notify.conf.json` ile aynı: `{whatsapp:{apiUrl,apiKey,session,chatId}}`;
+  dosya `MOON_BILDIRIM_CONF` (varsayılan `/data/bildirim.conf.json`) — compose
+  override'la `moon-ozel/bildirim.conf.json` bind-mount edilir. Aynı grupta
+  5 dk penceresine düşen olaylar TEK mesaj; grupsuz olaylar ve SSL uyarıları
+  bekletmeden gider. Mesaj biçimleri panel `olay_metinleri` ile aynı.
+- **`/api/disis/ozet`** (GET, `Authorization: Bearer $MOON_SERVIS_TOKEN`):
+  toplam/up/down/bayat + monitör özeti (ad+grup+durum+son ölçüm; URL YOK).
+  Token env'de yoksa uç 404 döner; yanlış token 401.
 
 ## Dağıtım (Mac mini)
 
@@ -49,11 +68,12 @@ node scripts/goc-sqlite-mongo.mjs /tmp/kaynak.db mongodb://127.0.0.1:27018/moon
 - İdempotent: aynı kaynakla ikinci koşu 0 yeni kayıt ekler (monitör URL'e,
   check `(monitor, at)` ikilisine göre eşleşir).
 - `--kurut` Moon koleksiyonlarını temizleyip yeniden yazar; `--gun N` pencereyi
-  değiştirir (varsayılan 30 — Mongo TTL 30 gün).
-- Faz 2'ye kalan eşlenmemiş alanlar: `interval`, `keyword`, `beklenen_kod`,
-  `ssl_bitis` (cert bitişi kısmen eşlenir), `enabled`, `notes`, `confirmed`
-  (3-onay), `consecutive_failures`. Moon şemasında karşılığı yok; ithalat bunları
-  atlar, bozmaz.
+  değiştirir (varsayılan 30).
+- **Faz 2a ikinci geçiş** (aynı komut, güncellenmiş eşleme): `keyword`,
+  `beklenen_kod`, `enabled`, `notes`, `consecutive_failures`, `interval` ve
+  monitör durumu URL eşleşmesiyle GÜNCELLENİR (yeni check eklenmez; kapalı
+  monitörler `enabled:false` olarak ithal edilir). Kaynak daima KOPIA
+  (`~/.hermes/cache/scratch/moon-goc/kaynak.db`, salt okunur açılır).
 
 ## Testler
 
