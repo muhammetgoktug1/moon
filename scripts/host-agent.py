@@ -211,6 +211,18 @@ def measure(host_os):
 
 
 def check_service(service):
+    # Tek seferlik takılma (ör. Supermemory takastan dönerken 10 sn+) yanlış "düştü"
+    # alarmı üretmesin: başarısız denemeyi 5 sn sonra bir kez daha dene.
+    r = _check_service_once(service)
+    if r["status"] == "down":
+        time.sleep(5)
+        r2 = _check_service_once(service)
+        if r2["status"] == "up":
+            return r2
+    return r
+
+
+def _check_service_once(service):
     url = str(service.get("url") or "")
     started = time.monotonic()
     code, detail = None, None
