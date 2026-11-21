@@ -173,6 +173,16 @@
 
 .verb { margin-right: 6px; color: var(--moon); font-weight: 600; }
 
+// notifications muted for this monitor (all channels off, or only some events)
+.muteIcon {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  color: var(--warn);
+
+  &[data-mute="partial"] { color: var(--muted); }
+}
+
 .certChip {
   align-self: flex-start;
   margin-top: 3px;

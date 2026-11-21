@@ -2,16 +2,20 @@
 
 import { useId, useRef, useState } from "react";
 
+// Components
+import NotificationFields from "@/components/NotificationFields";
+
 // Store
 import useLiveStore from "@/store/useLiveStore";
 
 // Utils
 import { getSocket } from "@/utils/socket";
+import { defaultNotifications } from "@/lib/notifySettings";
 
 // Styles
 import Styles from "@/styles/dialog.module.scss";
 
-const EMPTY = { name: "", group: "", url: "", method: "GET", headers: [], body: "" };
+const EMPTY = { name: "", group: "", url: "", method: "GET", headers: [], body: "", notifications: defaultNotifications("monitor") };
 
 const jsonError = (text) => {
   if (!text.trim()) return "";
@@ -32,6 +36,7 @@ const fromMonitor = (m) => ({
   method: m.method,
   headers: m.headerNames.map((key) => ({ key, value: "" })),
   body: "",
+  notifications: m.notifications || defaultNotifications("monitor"),
 });
 
 // A trigger button plus the native <dialog> it opens. With `monitor`, it edits that monitor.
@@ -166,8 +171,10 @@ const MonitorDialog = ({ label = "New monitor", primary, monitor }) => {
             </label>
           )}
 
+          <NotificationFields scope="monitor" value={form.notifications} onChange={(notifications) => setForm({ ...form, notifications })} />
+
           <footer className={Styles.foot}>
-            {error ? <p className={Styles.error}>{error}</p> : <p>Header values stay on the server.</p>}
+            {error ? <p className={Styles.error}>{error}</p> : <p>Header values stay on the server. Muting a channel only stops its messages — checks and history keep running.</p>}
             <button type="button" className={Styles.cancel} onClick={() => dialog.current.close()}>
               Cancel
             </button>

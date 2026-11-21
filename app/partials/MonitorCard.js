@@ -5,16 +5,19 @@ import Avatar from "@/components/Avatar";
 import Sparkline from "@/components/Sparkline";
 import StatusStrip from "@/components/StatusStrip";
 import TrendChip from "@/components/TrendChip";
+import BellOff from "@/components/BellOff";
 
 // Utils
 import { summarize, trend, tone, certDays, certTone } from "@/lib/stats";
 import { codeLabel, stateOf } from "@/utils/shortcuts";
 import { nameOf } from "@/utils/name";
+import { muteState } from "@/lib/notifySettings";
 
 // Styles
 import Styles from "../styles.module.scss";
 
 const STATE_LABEL = { idle: "Pending", down: "Down", slow: "Slow", up: "Up" };
+const MUTE_LABEL = { off: "Notifications off", partial: "Some notifications off" };
 
 const CertChip = ({ cert }) => {
   const days = certDays(cert, Date.now());
@@ -33,6 +36,7 @@ const MonitorCard = ({ m, drag }) => {
   const t = trend(m.checks);
   const { uptime, avg, p95 } = summarize(m.checks);
   const state = stateOf(m.checks);
+  const mute = muteState(m.notifications, "monitor"); // old/partial snapshots read as "on"
 
   return (
     <Link
@@ -61,6 +65,11 @@ const MonitorCard = ({ m, drag }) => {
           </span>
           {m.cert && <CertChip cert={m.cert} />}
         </div>
+        {mute !== "on" && (
+          <span className={Styles.muteIcon} data-mute={mute} role="img" aria-label={MUTE_LABEL[mute]} title={MUTE_LABEL[mute]}>
+            <BellOff />
+          </span>
+        )}
         <span className="pill">{STATE_LABEL[state]}</span>
       </div>
 

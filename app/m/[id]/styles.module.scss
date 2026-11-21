@@ -53,6 +53,7 @@
     color: var(--text-2);
   }
   .verb { color: var(--moon); border-color: rgba(243, 234, 208, 0.3); font-weight: 600; }
+  .muted { display: inline-flex; align-items: center; gap: 5px; color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
 }
 
 .delete {

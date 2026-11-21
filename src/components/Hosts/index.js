@@ -3,6 +3,9 @@
 import useLiveStore from "@/store/useLiveStore";
 import useNow from "@/hooks/useNow";
 
+// Components
+import ServiceSettings from "./ServiceSettings";
+
 // Utils
 import { hostsSection, barTone, fmtUptimeH } from "@/lib/hosts";
 
@@ -62,9 +65,8 @@ const Hosts = () => {
             {!!c.services.length && (
               <ul className={Styles.services}>
                 {c.services.map((s) => (
-                  <li key={s.name} data-tone={s.status}>
-                    <i className="lamp" data-tone={s.status} />
-                    {s.name}
+                  <li key={s.name}>
+                    <ServiceSettings host={c.name} service={s} />
                   </li>
                 ))}
               </ul>

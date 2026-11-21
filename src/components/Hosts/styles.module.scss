@@ -100,23 +100,62 @@
 }
 
 .services {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 4px 10px;
   margin: 0;
-  padding-top: 12px;
+  padding: 8px 0 0;
   border-top: 1px solid var(--line);
   list-style: none;
 
-  li {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    font: 12px var(--mono);
-    color: var(--text-2);
+  li { min-width: 0; }
+}
 
-    .lamp { width: 7px; height: 7px; }
-  }
+// a service is a button that opens its notification settings (≥44 px tall for touch)
+.service {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-2);
+  font: 12px var(--mono);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+
+  &:hover { background: rgba(255, 255, 255, 0.03); border-color: var(--line-strong); color: var(--text); }
+  &:focus-visible { outline: 2px solid rgba(243, 234, 208, 0.45); outline-offset: 1px; }
+}
+
+.serviceName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.serviceMute {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  color: var(--warn);
+
+  .service[data-mute="partial"] & { color: var(--muted); }
+}
+
+.agentNote {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+  border-radius: 12px;
+  color: var(--warn);
+  font-size: 12px;
+  line-height: 1.45;
+
+  svg { flex: none; margin-top: 1px; }
 }
 
 // Faz 2b: son geçiş olayı — küçük, soluk, kesik çizgiyle ayrılır (estetiği bozmaz)

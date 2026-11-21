@@ -12,6 +12,7 @@ import StatusStrip from "@/components/StatusStrip";
 import Timing from "@/components/Timing";
 import TrendChip from "@/components/TrendChip";
 import MonitorDialog from "@/components/MonitorDialog";
+import BellOff from "@/components/BellOff";
 
 // Partials
 import Certificate from "./partials/Certificate";
@@ -29,6 +30,7 @@ import useLiveStore from "@/store/useLiveStore";
 import { RANGES, summarize, trend, tone, codes, incidents, downsample, avgPhases } from "@/lib/stats";
 import { fmtTime, fmtDay, fmtDuration, codeLabel, stateOf } from "@/utils/shortcuts";
 import { nameOf } from "@/utils/name";
+import { muteState } from "@/lib/notifySettings";
 
 // Styles
 import Styles from "./styles.module.scss";
@@ -72,6 +74,7 @@ const Detail = () => {
   const t = trend(m.checks);
   const st = summarize(checks);
   const state = stateOf(m.checks);
+  const mute = muteState(m.notifications, "monitor");
   const codeList = codes(checks);
   const incList = incidents(checks);
   const recent = checks.slice(-20).reverse();
@@ -100,6 +103,11 @@ const Detail = () => {
               </span>
             ))}
             {!!m.bodySize && <span>JSON body · {m.bodySize} B</span>}
+            {mute !== "on" && (
+              <span className={Styles.muted} title="Edit the monitor to change what it notifies about">
+                <BellOff size={13} /> {mute === "off" ? "Notifications off" : "Some notifications off"}
+              </span>
+            )}
           </div>
         </div>
         <span className="pill">{{ idle: "Pending", down: "Down", slow: "Slow", up: "Up" }[state]}</span>
