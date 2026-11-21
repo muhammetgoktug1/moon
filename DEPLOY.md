@@ -88,6 +88,12 @@ mesajları TÜRKÇE kalır. Upstream koduna dokunulmaz.
     `MOON_REPORT_URL`, `MOON_SERVICE_TOKEN`, `HOST_AGENT_CONFIG` (JSON: host
     adı + os + servisler; makineye özel dosya repo DIŞINDA). Bayraklar:
     `--dry-run`, `--once`.
+  - İsteğe bağlı (bellek için bilerek uyutulan) servis: servis kaydına
+    `on_demand_marker` (uyurken var olan işaret dosyası) + `on_demand_detail`
+    (uyurken raporlanan metin) eklenir. İşaret VARSA ve kontrol başarısızsa durum
+    `up` + o metin gider (yanlış DÜŞTÜ/WhatsApp alarmı yok, 5 sn yeniden deneme
+    beklenmez); işaret yoksa ya da servis sağlıklıysa kural aynıdır. Kayıt
+    SİLİNMEZ. Test: `python3 scripts/test_host_agent.py`.
   - Bozma testleri: `python3 scripts/bozma-host.py` (5 bozma: token denetimi,
     alan doğrulama, 30 sn kuralı, /status sızıntısı, boş durum gizliliği).
 - **Gizlilik taraması:** `python3 scripts/privacy-scan.py [base]` — diff'in

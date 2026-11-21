@@ -13,6 +13,9 @@ machine-specific comes from the environment:
                          "interval": 60,                                  # seconds, loop mode
                          "services": [{"name": "svc-a", "url": "http://…"}]
                        }
+                       Optional per-service keys for on-demand services (started only when used):
+                         "on_demand_marker": "/path/to/marker-file"   # exists while the service is asleep on purpose
+                         "on_demand_detail": "sleeping (on demand)"   # detail text reported while asleep
 
 Usage:
   host-agent.py             loop forever: measure, send, sleep(interval)
@@ -25,8 +28,12 @@ so it runs on a bare macOS/Linux host with the system interpreter. Metrics:
   linux:  /proc/stat (two samples) / /proc/meminfo / df -P / /proc/loadavg + /proc/uptime
 
 Service checks are plain HTTP GETs: 2xx-3xx = up, anything else or a network
-error = down (code/error kept in `detail`, truncated). The report body carries
-no secrets; the server stamps `at` and never stores the token.
+error = down (code/error kept in `detail`, truncated). A service with an
+`on_demand_marker` whose file exists AND whose check fails is reported as `up`
+with the configured `on_demand_detail` (it was stopped on purpose to save
+memory and wakes on first use) — so no false "down" alert is raised; the service
+entry is never dropped. The report body carries no secrets; the server stamps
+`at` and never stores the token.
 """
 
 import argparse
@@ -210,15 +217,31 @@ def measure(host_os):
     }
 
 
+def _on_demand_asleep(service):
+    """True when the service declares an on-demand marker file and that file exists."""
+    marker = service.get("on_demand_marker")
+    return bool(marker) and os.path.exists(os.path.expanduser(str(marker)))
+
+
+def _asleep_result(service, once):
+    detail = str(service.get("on_demand_detail") or "sleeping (on demand)")[:DETAIL_MAX]
+    return {"name": once["name"], "status": "up", "ms": once["ms"], "code": None, "detail": detail}
+
+
 def check_service(service):
     # Tek seferlik takılma (ör. Supermemory takastan dönerken 10 sn+) yanlış "düştü"
     # alarmı üretmesin: başarısız denemeyi 5 sn sonra bir kez daha dene.
     r = _check_service_once(service)
     if r["status"] == "down":
+        # İsteğe bağlı servis bilerek uyutulmuş (işaret dosyası var): yeniden deneme beklemeden "up (uykuda)".
+        if _on_demand_asleep(service):
+            return _asleep_result(service, r)
         time.sleep(5)
         r2 = _check_service_once(service)
         if r2["status"] == "up":
             return r2
+        if _on_demand_asleep(service):  # işaret bu 5 sn içinde yazılmış olabilir
+            return _asleep_result(service, r)
     return r
 
 
