@@ -132,17 +132,12 @@
   &:focus-visible { outline: 2px solid rgba(243, 234, 208, 0.45); outline-offset: 1px; }
 }
 
-// long names wrap onto a second line instead of being cut (title/aria-label carry the full name)
+// long names wrap (never cut): the row grows instead
 .serviceName {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
   overflow-wrap: anywhere;
   line-height: 1.3;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
 }
 
 .serviceMute {
