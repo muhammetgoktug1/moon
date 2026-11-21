@@ -229,6 +229,15 @@ def _asleep_result(service, once):
 
 
 def check_service(service):
+    r = _check_service_retry(service)
+    # "alerts": false in the service config -> still reported (dashboards keep the real
+    # state) but the server sends no down/up notifications for it.
+    if service.get("alerts") is False:
+        r = dict(r, alerts=False)
+    return r
+
+
+def _check_service_retry(service):
     # Tek seferlik takılma (ör. Supermemory takastan dönerken 10 sn+) yanlış "düştü"
     # alarmı üretmesin: başarısız denemeyi 5 sn sonra bir kez daha dene.
     r = _check_service_once(service)
