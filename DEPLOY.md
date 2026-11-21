@@ -65,6 +65,34 @@ mesajları TÜRKÇE kalır. Upstream koduna dokunulmaz.
   conf dosyası compose override'la bind-mount edilir. Aynı grupta 5 dk
   penceresine düşen olaylar TEK mesaj; grupsuz olaylar ve SSL uyarıları
   bekletmeden gider. Mesaj metinleri panel `olay_metinleri` ile aynı (TÜRKÇE).
+- **Bildirim ayarı — kanal + olay bazlı (lib/notifySettings.js):** her monitör ve
+  her host servisi için panelden düzenlenir. Şekil:
+  `notifications: { <kanal>: { enabled: Boolean, events: { down, recovery, ssl } } }`
+  (host servisinde `ssl` yok). Alan YOKSA ya da değer `false` değilse AÇIK sayılır →
+  eski kayıtlar için göç gerekmez; sonradan eklenen kanal/olay da eski kayıtlarda açık
+  başlar. Kanal kapalıysa o kanaldaki tüm olaylar susar. **Yalnız mesaj susar:** ölçüm,
+  durum (down/up), geçmiş ve panel görünümü aynen sürer.
+  - Kontrol noktaları: `NotifyQueue.add` (checker olayının 3. elemanı monitörün ayarı;
+    düştü/toparlandı/SSL tek yerde süzülür), `groupStats` (susturulan monitör gruplu
+    mesajın hem sayısından hem listesinden çıkar), `sslAlertEvent` (susturulmuş SSL
+    uyarısı günlük kilidi tüketmez), `serviceTransitions` (host servisleri).
+  - Host servisleri config dosyasından geldiği için ayar `hostServiceSettings`
+    koleksiyonunda (host adı + servis adı, unique) tutulur. Etkin karar:
+    host-agent `alerts:false` VEYA panel ayarı kapalı → sessiz; panelde agent'tan
+    kapalı servis "Off via host-agent setting" diye görünür. Host seviyesindeki "rapor
+    yok" uyarısı servis ayarından bağımsızdır.
+  - Panel formları socket event'leriyle (`edit`/`add` içinde `notifications`,
+    `hostService:notifications`); aynı doğrulama HTTP'den de erişilir (oturum çerezi
+    + Origin kontrolü): `PATCH /api/monitors/<id>/notifications` ve
+    `PATCH /api/host-services/notifications` (gövde `{host, service, notifications}`).
+    Bilinmeyen kanal/olay ya da boolean olmayan değer → 400; kısmi gövde mevcut ayarla
+    birleşir.
+  - **Yeni kanal eklemek (örn. e-posta):** (1) `CHANNELS`'a bir satır ekle —
+    mongoose şeması, API doğrulaması ve formdaki "Notifications" bölümü buradan
+    türer; (2) o kanal için `NotifyQueue({ channel, send })` örneği kur ve checker'ın
+    `notifyQueue()` yoluna bağla; host servisleri için `serviceTransitions`'a kanal
+    ver. Eski kayıtlar yeni kanalda açık başlar — istemiyorsan o kanalı varsayılan
+    kapalı sayan bir kural ekle.
 - **`/api/external/summary`** (GET, `Authorization: Bearer <MOON_SERVICE_TOKEN>`):
   total/up/down/stale + monitör özeti (name+group+status+lastCheck; URL YOK) +
   Faz A `hosts` (en küçük host özeti; rapor yoksa `null`).

@@ -3,11 +3,14 @@ import next from "next";
 import mongoose from "mongoose";
 import { Server } from "socket.io";
 import { MONGODB_URI, PORT, warnLegacyEnv } from "./lib/config.js";
-import { Monitor, Check, Group, HostReport } from "./lib/models.js";
+import { Monitor, Check, Group, HostReport, HostServiceSetting } from "./lib/models.js";
 import { startChecker, checkOne, toWire, certWire } from "./lib/checker.js";
 import { externalEndpoint } from "./lib/external.js";
 import { hostReportEndpoint, hostsWire } from "./lib/hostReport.js";
 import { dispatchReportAlerts, startHostReportWatch } from "./lib/hostAlerts.js";
+import { parseMonitor } from "./lib/monitorInput.js";
+import { monitorNotificationsWire, saveHostServiceNotifications } from "./lib/notifyStore.js";
+import { settingsEndpoint } from "./lib/settingsApi.js";
 import { statusData, resetStatusCache } from "./lib/statusPage.js";
 import { routeGate } from "./lib/routes.js";
 import { RECENT, RANGES } from "./lib/stats.js";
@@ -43,6 +46,8 @@ async function snapshot() {
         // header values and body can hold secrets; only their shape leaves the server
         headerNames: (m.headers || []).map((h) => h.key),
         bodySize: (m.body || "").length,
+        // complete notification settings (defaults filled); records without the field read as all-on
+        notifications: monitorNotificationsWire(m),
         cert: certWire(m.cert),
         checks: checks.reverse().map(toWire),
       };
@@ -56,47 +61,6 @@ async function groupList() {
 }
 
 const groupName = (name) => String(name || "").trim().slice(0, 40);
-
-function parseUrl(raw) {
-  try {
-    const url = new URL(String(raw).trim());
-    if (url.protocol === "http:" || url.protocol === "https:") return url;
-  } catch {}
-  return undefined;
-}
-
-function parseRequest({ method, headers, body }) {
-  const verb = method === "POST" ? "POST" : "GET";
-  const pairs = (Array.isArray(headers) ? headers : [])
-    .map((h) => ({ key: String(h?.key || "").trim(), value: String(h?.value || "").trim() }))
-    .filter((h) => h.key);
-  try {
-    new Headers(pairs.map((h) => [h.key, h.value]));
-  } catch {
-    return { error: "One of the headers is not valid." };
-  }
-  const text = verb === "POST" ? String(body || "").trim() : "";
-  if (!text) return { method: verb, headers: pairs, body: "" };
-  try {
-    JSON.parse(text);
-  } catch {
-    return { error: "Request body must be valid JSON." };
-  }
-  return { method: verb, headers: pairs, body: text };
-}
-
-function parseMonitor({ name, group, url, ...request }) {
-  const parsed = parseUrl(url);
-  if (!parsed) return { error: "Enter a valid http(s) URL." };
-  const req = parseRequest(request);
-  if (req.error) return req;
-  return {
-    name: String(name || "").trim().slice(0, 60) || parsed.host,
-    group: mongoose.isValidObjectId(group) ? group : null,
-    url: parsed.href,
-    ...req,
-  };
-}
 
 // The browser never sees header values or the body, so on edit a blank
 // header value or an empty body means "keep what is stored".
@@ -148,6 +112,17 @@ function wire(io) {
     socket.on("groups", async (ack) => {
       if (!authed()) return ack?.(AUTH_ERROR);
       ack(await groupList());
+    });
+
+    // Host services come from the host-agent config; their notification settings are
+    // panel-editable and stored per (host, service). Same validation as the HTTP API.
+    socket.on("hostService:notifications", async (data, ack) => {
+      if (!authed()) return ack?.(AUTH_ERROR);
+      if (!writeOriginOk()) return ack?.(ORIGIN_ERROR);
+      const result = await saveHostServiceNotifications(data?.host, data?.service, data?.notifications);
+      if (result.error) return ack({ error: result.error });
+      ack({ notifications: result.notifications });
+      await hostsBroadcast();
     });
 
     socket.on("group:add", async (name, ack) => {
@@ -210,7 +185,7 @@ function wire(io) {
       if (!writeOriginOk()) return ack?.(ORIGIN_ERROR);
       const monitor = mongoose.isValidObjectId(data?.id) && (await Monitor.findById(data.id).lean());
       if (!monitor) return ack({ error: "This monitor no longer exists." });
-      const fields = parseMonitor({ ...data, ...withStored(data, monitor) });
+      const fields = parseMonitor({ ...data, ...withStored(data, monitor) }, monitor.notifications);
       if (fields.error) return ack(fields);
       // a different host serves a different certificate; the next check reads it
       const sameHost = new URL(fields.url).host === new URL(monitor.url).host;
@@ -315,6 +290,14 @@ async function gate(req, res, handle) {
   // iç host rapor ucu (host-agent.py; aynı servis token'ı) — kimlik uçlarından önce
   // Faz 2b: kabul edilen raporun servis geçişleri anında WhatsApp'a gider.
   if (await hostReportEndpoint(req, res, { onStored: () => hostsBroadcast(), onReport: dispatchReportAlerts })) return;
+  // bildirim ayarları HTTP ucu (oturum çerezi; panel formları socket kullanır, mantık ortak)
+  if (
+    await settingsEndpoint(req, res, {
+      verify: (r) => verifySession(cookieValue(r.headers.cookie)),
+      onChange: (kind) => (kind === "monitor" ? broadcastMonitors() : hostsBroadcast()),
+    })
+  )
+    return;
   if (await authEndpoints(req, res)) return;
 
   const path = req.url.split("?")[0];
@@ -339,6 +322,7 @@ warnLegacyEnv();
 await Check.syncIndexes().catch((err) => console.error("check index sync", err));
 // Faz A: hostReports TTL (30g) + host adına unique indeks açılışta kesin kurulsun.
 await HostReport.syncIndexes().catch((err) => console.error("hostReport index sync", err));
+await HostServiceSetting.syncIndexes().catch((err) => console.error("hostServiceSetting index sync", err));
 await app.prepare();
 
 const server = createServer((req, res) => {
@@ -351,6 +335,8 @@ const server = createServer((req, res) => {
 const io = new Server(server);
 // Faz A: yeni host raporu yazılınca panele canlı itilir (yalnız 'auth' odası).
 const hostsBroadcast = async () => io.to("auth").emit("hosts", await hostsWire());
+// a monitor's notification settings changed over HTTP: refresh the open panels
+const broadcastMonitors = async () => io.to("auth").emit("monitors", await snapshot());
 wire(io);
 
 // Kontrolcü (dakikalık denetim turu) varsayılan DURUR: mevcut uptime uygulamamız
